@@ -1,0 +1,26 @@
+# IDE
+.vscode
+.idea/
+
+# Go test output
+*/*.test
+*/*.out
+
+# Build output
+build
+
+# Dependencies
+go.sum
+
+# gomobile compilation output
+*.aar
+*.jar
+
+# vi swap files
+*.swp 
+
+
+.#*
+
+.env
+serviceAccounts.json

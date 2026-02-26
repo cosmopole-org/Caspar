@@ -1,0 +1,17 @@
+[package]
+description = "The procedural macros for WasmEdge Rust bindings."
+documentation = "https://docs.rs/wasmedge-macro/"
+edition = "2021"
+license = "Apache-2.0"
+name = "wasmedge-macro"
+readme = "README.md"
+repository = "https://github.com/WasmEdge/wasmedge-rust-sdk"
+version = "0.6.1"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.43"
+quote = "1"
+syn = {version = "2", features = ["full", "extra-traits"]}

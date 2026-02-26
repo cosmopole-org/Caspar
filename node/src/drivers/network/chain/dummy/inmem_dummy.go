@@ -1,0 +1,35 @@
+package dummy
+
+import (
+	"kasper/src/drivers/network/chain/proxy/inmem"
+	"github.com/sirupsen/logrus"
+)
+
+// InmemDummyClient is an in-memory implementation of the dummy app. It embeds
+// an InmemProxy so automatically implements the AppProxy interface, and can be
+// passed in the Babble constructor directly.
+type InmemDummyClient struct {
+	*inmem.InmemProxy
+	state  *State
+	logger *logrus.Entry
+}
+
+// NewInmemDummyClient instantiates an InmemDummyClient.
+func NewInmemDummyClient(logger *logrus.Entry) *InmemDummyClient {
+	state := NewState(logger)
+
+	proxy := inmem.NewInmemProxy(state, logger)
+
+	client := &InmemDummyClient{
+		InmemProxy: proxy,
+		state:      state,
+		logger:     logger,
+	}
+
+	return client
+}
+
+// GetCommittedTransactions returns the state's list of transactions.
+func (c *InmemDummyClient) GetCommittedTransactions() [][]byte {
+	return c.state.GetCommittedTransactions()
+}
