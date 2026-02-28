@@ -30,7 +30,6 @@ type WorkChain struct {
 	blockchain  *Blockchain
 	mainLedger  *babble.Babble
 	mainProxy   *inmem.InmemProxy
-	sharder     *ShardManager
 	shardChains cmap.ConcurrentMap[string, *ShardChain]
 }
 
@@ -120,19 +119,11 @@ func initTransport(config *config.Config) (net.Transport, error) {
 }
 
 func (b *Blockchain) createNewWorkChain(chainId string) *WorkChain {
-	wchain := &WorkChain{Id: chainId, mainLedger: nil, mainProxy: nil, sharder: nil, shardChains: cmap.New[*ShardChain](), blockchain: b}
+	wchain := &WorkChain{Id: chainId, mainLedger: nil, mainProxy: nil, shardChains: cmap.New[*ShardChain](), blockchain: b}
 	b.chains.Set(chainId, wchain)
-	shardCreatorCb := func(shardId string, nodes []string) {
-		wchain.createNewShardChain(shardId, true, nodes)
-	}
 	mainShardChain := wchain.createNewShardChain("shard-main", false, []string{})
 	wchain.mainLedger = mainShardChain.shardLedger
 	wchain.mainProxy = mainShardChain.shardProxy
-	if b.app.Id() == os.Getenv("ROOT_NODE") && chainId == "main" {
-		wchain.sharder = NewShardManager([]string{os.Getenv("ROOT_NODE")}, 1, 10, 5, 100000, 1, shardCreatorCb)
-	} else {
-		wchain.sharder = NewShardManager([]string{os.Getenv("ROOT_NODE"), b.app.Id()}, 1, 10, 5, 100000, 1, shardCreatorCb)
-	}
 	return wchain
 }
 
@@ -182,15 +173,7 @@ func (w *WorkChain) createNewShardChain(chainId string, created bool, peersArr [
 	config.Proxy = proxy
 	engine := babble.NewBabble(config)
 	if err := engine.Init(w.blockchain.trans, w.Id, chainId, func(origin string) {
-		w.sharder.AddNode(string(origin))
-		w.sharder.mu.Lock()
-		defer w.sharder.mu.Unlock()
-		state, err := w.sharder.ExportState()
-		if err == nil {
-			w.blockchain.SubmitTrx(w.Id, "", "sharderMap|"+string(origin), []byte(state))
-		} else {
-			log.Println(err)
-		}
+
 	}); err != nil {
 		panic(err)
 	}
@@ -256,22 +239,17 @@ func (c *Blockchain) Peers() []string {
 	return peers
 }
 
-func (c *Blockchain) SubmitTrx(chainId string, machineId string, typ string, payload []byte) {
+func (c *Blockchain) SubmitTrx(chainId string, typ string, payload []byte) {
 	mainWorkChain, _ := c.chains.Get(chainId)
-	if machineId == "" {
-		mainShardChain, _ := mainWorkChain.shardChains.Get("shard-main")
-		mainShardChain.shardProxy.SubmitTx(payload)
-	} else {
-		mainShardChain, _ := mainWorkChain.shardChains.Get(mainWorkChain.sharder.Hasher.GetShard(machineId))
-		mainShardChain.shardProxy.SubmitTx(payload)
-	}
+	mainShardChain, _ := mainWorkChain.shardChains.Get("shard-main")
+	mainShardChain.shardProxy.SubmitTx(payload)
 }
 
 func (c *Blockchain) NotifyNewMachineCreated(chainId string, machineId string) {
-	mainWorkChain, found := c.chains.Get(chainId)
-	if found {
-		mainWorkChain.sharder.DeployDapp(machineId)
-	}
+	// mainWorkChain, found := c.chains.Get(chainId)
+	// if found {
+
+	// }
 }
 
 func (c *Blockchain) CreateTempChain() string {
@@ -290,32 +268,15 @@ func (c *Blockchain) GetNodeOwnerId(origin string) string {
 	return ""
 }
 
-func (c *Blockchain) GetValidatorsOfMachineShard(machineId string) []string {
-	validators := []string{}
-	mainChain, _ := c.chains.Get("main")
-	shardId := mainChain.sharder.Hasher.GetShard(machineId)
-	shardChain, _ := mainChain.shardChains.Get(shardId)
-	for _, peer := range shardChain.shardLedger.Peers.Peers {
-		validators = append(validators, strings.Split(peer.NetAddr, ":")[0])
-	}
-	return validators
-}
-
 type HgHandler struct {
 	State state.State
 	Chain *WorkChain
 }
 
 func (p *HgHandler) CommitHandler(block hashgraph.Block) (proxy.CommitResponse, error) {
-	machineIds := p.Chain.blockchain.pipeline(block.Transactions(), func(insiderTrx []byte) {
-		sharderMapKey := "sharderMap|" + p.Chain.blockchain.app.Id() + "::"
-		if strings.HasPrefix(string(insiderTrx), sharderMapKey) {
-			payload := insiderTrx[len(sharderMapKey):]
-			p.Chain.sharder.ImportState(string(payload))
-		}
-	})
+	p.Chain.blockchain.pipeline(block.Transactions(), func(insiderTrx []byte) {
 
-	p.Chain.sharder.ProcessDAppTransactionGroup(machineIds)
+	})
 
 	receipts := []hashgraph.InternalTransactionReceipt{}
 	for _, it := range block.InternalTransactions() {

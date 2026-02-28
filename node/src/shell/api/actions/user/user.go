@@ -117,19 +117,7 @@ func (a *Actions) LockToken(state state.IState, input inputsusers.LockTokenInput
 		return nil, errors.New("your balance is not enough")
 	}
 	lockId := crypto.SecureUniqueString()
-	if input.Type == "exec" {
-		validators := a.App.Tools().Network().Chain().GetValidatorsOfMachineShard(input.Target)
-		str, err := json.Marshal(validators)
-		if err != nil {
-			return nil, err
-		}
-		if input.Amount < int64(len(validators)) {
-			return nil, errors.New("amount to be locked can not be less than validators count")
-		}
-		user.Balance -= input.Amount
-		user.Push(state.Trx())
-		state.Trx().PutJson("Json::User::"+state.Info().UserId(), "lockedTokens."+lockId, map[string]any{"type": "exec", "amount": input.Amount, "validators": string(str)}, true)
-	} else if input.Type == "pay" {
+	if input.Type == "pay" {
 		if !state.Trx().HasObj("User", input.Target) {
 			return nil, errors.New("target user not acceptable")
 		}

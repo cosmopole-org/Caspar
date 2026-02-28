@@ -18,7 +18,6 @@ func Install(a *Actions, extra ...any) error {
 
 // Hello /api/hello check [ false false false ] access [ true false false false GET ]
 func (a *Actions) Hello(_ state.IState, input inputs.HelloInput) (any, error) {
-	a.App.Tools().Network().Chain().SubmitTrx("main", "", "message", []byte("hello " + input.Name + " !"))
 	return map[string]any{"message": "hello " + input.Name + " !"}, nil
 }
 

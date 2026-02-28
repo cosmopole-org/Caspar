@@ -11,16 +11,12 @@ import (
 	"kasper/src/abstract/adapters/file"
 	"kasper/src/abstract/adapters/signaler"
 	"kasper/src/abstract/adapters/storage"
-	iaction "kasper/src/abstract/models/action"
 	"kasper/src/abstract/models/core"
-	"kasper/src/abstract/models/packet"
 	"kasper/src/abstract/models/trx"
-	"kasper/src/abstract/models/update"
 	"kasper/src/abstract/models/worker"
 	"kasper/src/abstract/state"
 	"kasper/src/core/module/actor/model/base"
 	inputs_points "kasper/src/shell/api/inputs/points"
-	inputs_storage "kasper/src/shell/api/inputs/storage"
 	inputs_users "kasper/src/shell/api/inputs/users"
 	"kasper/src/shell/api/model"
 	updates_points "kasper/src/shell/api/updates/points"
@@ -377,188 +373,6 @@ func (wm *Wasm) WasmCallback(dataRaw string) (string, int64) {
 		})
 		jsn, _ := json.Marshal(map[string]any{"gasLimit": gasLimit})
 		return string(jsn), reqId
-	} else if key == "submitOnchainResponse" {
-		callbackId, err := checkField(input, "callbackId", "")
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		cost, err := checkField[float64](input, "cost", 0)
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		tokenOwnerId, err := checkField(input, "tokenOwnerId", "")
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		tokenId, err := checkField(input, "tokenId", "")
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		pack, err := checkField(input, "packet", "")
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		changes, err := checkField(input, "changes", "")
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		resCode, err := checkField[float64](input, "resCode", 0)
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		e, err := checkField(input, "error", "")
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		trxInp := packet.ConsumeTokenInput{TokenId: tokenId, Amount: int64(cost), TokenOwnerId: tokenOwnerId}
-		i, _ := json.Marshal(trxInp)
-		wm.app.ModifyState(false, func(trx trx.ITrx) error {
-			trx.PutString("Temp::User::"+tokenOwnerId+"::consumedTokens::"+tokenId, "true")
-			return nil
-		})
-		wm.app.ExecAppletResponseOnChain(callbackId, []byte(pack), "#appletsign", int(resCode), e, []update.Update{{Val: []byte("consumeToken: " + string(i))}, {Val: []byte("applet: " + changes)}})
-	} else if key == "submitOnchainTrx" {
-		machineId, err := checkField(input, "machineId", "")
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		targetMachineId, err := checkField(input, "targetMachineId", "")
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		isRequesterOnchain, err := checkField(input, "isRequesterOnchain", false)
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		kRaw, err := checkField(input, "key", "")
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		kParts := strings.Split(kRaw, "|")
-		dstPointId := kParts[0]
-		srcPointId, err := checkField(input, "pointId", "")
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		k := kParts[1]
-		userId := kParts[2]
-		userSignature := kParts[3]
-		tokenId := kParts[4]
-		onchainReq := kParts[5] == "true"
-		isFile, err := checkField(input, "isFile", false)
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		isBase, err := checkField(input, "isBase", false)
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		tag, err := checkField(input, "tag", "")
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		pack, err := checkField(input, "packet", "{}")
-		if err != nil {
-			println(err)
-			return err.Error(), reqId
-		}
-		var data []byte
-		if isFile {
-			if wm.file.CheckFileFromStorage(wm.storageRoot, srcPointId, pack) {
-				b, err := wm.file.ReadFileFromStorage(wm.storageRoot, srcPointId, pack)
-				if err != nil {
-					println(err)
-					return err.Error(), reqId
-				}
-				data = b
-			}
-		} else {
-			data = []byte(pack)
-		}
-
-		if userId == "" && userSignature == "" {
-			userId = machineId
-			userSignature = "#appletsign"
-		}
-
-		result := []byte("{}")
-		outputCnan := make(chan int)
-		if isBase {
-			if k == "/storage/upload" {
-				inp := inputs_storage.UploadDataInput{
-					Data:    base64.StdEncoding.EncodeToString(data),
-					PointId: dstPointId,
-				}
-				data, _ = json.Marshal(inp)
-			}
-			if onchainReq {
-				wm.app.ExecBaseRequestOnChain(k, data, userSignature, userId, tag, func(b []byte, i int, err error) {
-					if err != nil {
-						println(err)
-						return
-					}
-					result = b
-					if !isRequesterOnchain {
-						outputCnan <- 1
-					}
-				})
-			} else {
-				action := wm.app.Actor().FetchAction(k)
-				if action == nil {
-					return "action not found", reqId
-				}
-				var err error
-				inp, err := action.(iaction.ISecureAction).ParseInput("tcp", data)
-				if err != nil {
-					println(err)
-					return err.Error(), reqId
-				}
-				_, result, err := action.(iaction.ISecureAction).SecurelyAct(userId, "", data, userSignature, inp, "", true)
-				println(result)
-				if err != nil {
-					return err.Error(), reqId
-				}
-				str, _ := json.Marshal(result)
-				return string(str), reqId
-			}
-		} else {
-			if onchainReq {
-				wm.app.ExecAppletRequestOnChain(dstPointId, targetMachineId, k, data, userSignature, userId, tag, tokenId, func(b []byte, i int, err error) {
-					if err != nil {
-						println(err)
-						return
-					}
-					result = b
-					if !isRequesterOnchain {
-						outputCnan <- 1
-					}
-				})
-			}
-		}
-		if !isRequesterOnchain {
-			<-outputCnan
-		}
-		if !isRequesterOnchain {
-			return string(result), reqId
-		} else {
-			return "{}", reqId
-		}
 	} else if key == "plantTrigger" {
 		count, err := checkField(input, "count", float64(0))
 		if err != nil {
@@ -622,9 +436,10 @@ func (wm *Wasm) WasmCallback(dataRaw string) (string, int64) {
 		typ := parts[0]
 		temp := false
 		if len(parts) > 1 {
-			if parts[1] == "true" {
+			switch parts[1] {
+			case "true":
 				temp = true
-			} else if parts[1] == "false" {
+			case "false":
 				temp = false
 			}
 		}

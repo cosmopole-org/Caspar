@@ -6,7 +6,6 @@ import (
 	"kasper/src/abstract/models/action"
 	"kasper/src/abstract/models/core"
 	"kasper/src/abstract/models/input"
-	"kasper/src/abstract/models/update"
 	"kasper/src/abstract/state"
 	"log"
 )
@@ -32,23 +31,28 @@ func (a *SecureAction) ParseInput(protocol string, raw interface{}) (input.IInpu
 	return a.Parsers[protocol](raw)
 }
 
-func (a *SecureAction) SecurlyActChain(userId string, packetId string, packetBinary []byte, packetSignature string, input input.IInput, origin string, tag string) {
+func (a *SecureAction) SecurlyActChain(userId string, packetId string, packetBinary []byte, packetSignature string, input input.IInput, origin string, tag string) (int, any, error) {
 	success, info := a.Guard.CheckValidityForChain(a.core, packetBinary, packetSignature, userId, input.GetPointId())
 	if !success {
-		data := []byte("{}")
-		a.core.ExecBaseResponseOnChain(packetId, data, a.core.SignPacket(data), 403, "authorization failed", []update.Update{}, tag, userId)
+		return 403, nil, errors.New("authorization failed")
 	} else {
+		var result any
+		var resCode int
+		var e error
 		a.core.ModifyStateSecurlyWithSource(false, info, origin, func(s state.IState) error {
 			sc, res, err := a.Act(s, input)
 			if err != nil {
-				data := []byte("{}")
-				a.core.ExecBaseResponseOnChain(packetId, data, a.core.SignPacket(data), 500, err.Error(), []update.Update{}, tag, userId)
+				result = map[string]any{}
+				resCode = 500
+				e = err
 			} else {
-				data, _ := json.Marshal(res)
-				a.core.ExecBaseResponseOnChain(packetId, data, a.core.SignPacket(data), sc, "", s.Trx().Updates(), tag, userId)
+				result = res
+				resCode = sc
+				e = nil
 			}
 			return err
 		})
+		return resCode, result, e
 	}
 }
 

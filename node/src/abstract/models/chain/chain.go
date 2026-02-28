@@ -3,14 +3,15 @@ package chain
 import "kasper/src/abstract/models/update"
 
 type ChainMessage struct {
-	Key        string
-	Author     string
-	Submitter  string
-	Payload    []byte
-	Signatures []string
-	RequestId  string
-	Recievers  []string
-	ReplyTo    string
+	Key         string
+	Author      string
+	Submitter   string
+	Payload     []byte
+	Signatures  []string
+	RequestId   string
+	Recievers   map[string]map[string]bool
+	ReplyTo     string
+	PointId     string
 }
 
 type ChainBaseRequest struct {
